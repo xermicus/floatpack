@@ -11,6 +11,12 @@ pub struct Packer {
     trim: bool,
 }
 
+impl Default for Packer {
+    fn default() -> Self {
+        Packer::new()
+    }
+}
+
 #[derive(Default)]
 struct Cache {
     buffer: Option<[u32; 4]>,
@@ -41,15 +47,9 @@ impl Packer {
     }
 
     pub fn load(&mut self, value: &str) -> Result<(),Error> {
-        let result;
-        if self.trim {
-            result = value.trim_matches('0');
-        } else {
-            result = value;
-        }
-        Ok(
-            self.load_decimal(Decimal::from_str(result)?)
-        )
+        let result = if self.trim { value.trim_matches('0') } else { value };
+        self.load_decimal(Decimal::from_str(result)?);
+        Ok(())
     }
     
     pub fn load_decimal(&mut self, value: Decimal) {
@@ -93,10 +93,6 @@ impl Packer {
 
     fn flush_cache(&mut self) {
         self.cache = Cache::default()
-    }
-
-    pub fn serialize(&self) {
-        unimplemented!()
     }
 }
 
