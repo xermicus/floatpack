@@ -3,13 +3,23 @@ name = "floatpack"
 version = "0.1.0"
 authors = ["xermicus <bigcyrill@hotmail.com>"]
 edition = "2018"
+license = "MIT"
+readme = "./README.md"
+keywords = ["compression", "bitpacking", "decimal"]
+documentation = "https://docs.rs/floatpack"
+description = """
+Bitpacking with SIMD for `Decimal` from the `rust_decimal` crate
+"""
+categories = ["science", "data-structures"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 rust_decimal = "1.17.0"
 bitpacking = "0.8.4"
+serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]
 rust_decimal_macros = "1.17"
 rand = "0.8.4"
+bincode = "1"

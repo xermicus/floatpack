@@ -1,5 +1,6 @@
 use bitpacking::{BitPacker, BitPacker8x};
 use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
 
 /// Represents `Decimals` in packed form.  (.0 = Compressed blocks, .1 = Count of decimals)
 ///
@@ -14,8 +15,8 @@ use rust_decimal::Decimal;
 ///
 /// How it works:
 /// 1. The `Decimal` values are serialized in their components (4 x u32)
-/// 2. The 4 components are individually compressed by only storing their cumulative difference (XOR).
-/// 3. The 4 components are bit-packed
+/// 2. The 4 component streams are individually compressed by storing their cumulative difference (XOR).
+/// 3. The 4 compressed component streams are then bit-packed
 pub type PackedDecimals = ([Vec<Block>; 4], usize);
 
 struct Packer {
@@ -48,10 +49,11 @@ impl Default for Cache {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Block {
-    bits: u8,
-    head: u32,
-    vals: Vec<u8>,
+    pub bits: u8,
+    pub head: u32,
+    pub vals: Vec<u8>,
 }
 
 impl Packer {
@@ -166,7 +168,7 @@ fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
 
 #[cfg(test)]
 mod tests {
-    use crate::{pack, unpack, unzip_u8, zip_u8};
+    use crate::{pack, unpack};
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
 
@@ -175,33 +177,19 @@ mod tests {
     }
 
     #[test]
-    fn zipper() {
-        for d in [
-            dec!(0.866089137820393),
-            dec!(11.866089137820393),
-            dec!(-111.866089137820393),
-            dec!(0.0),
-            dec!(1.0),
-            dec!(-1.0),
-            Decimal::MAX,
-            Decimal::MIN,
-        ] {
-            let z = zip_u8(d.serialize());
-            assert_eq!(d, Decimal::deserialize(unzip_u8(z)));
-        }
-    }
-
-    #[test]
     fn some_values() {
         test_packing(&vec![
             dec!(0.866089137820393),
             dec!(11.866089137820393),
-            dec!(-111.866089137820393),
-            dec!(0.0),
-            dec!(1.0),
-            dec!(-1.0),
+            Decimal::ZERO,
+            Decimal::ONE,
+            Decimal::NEGATIVE_ONE,
             Decimal::MAX,
             Decimal::MIN,
+            Decimal::ONE_HUNDRED,
+            Decimal::ONE_THOUSAND,
+            Decimal::TWO,
+            dec!(-111.866089137820393),
         ])
     }
 
@@ -217,5 +205,16 @@ mod tests {
             values.push(d);
         }
         test_packing(&values)
+    }
+
+    #[test]
+    fn compression() {
+        let mut values = Vec::with_capacity(1000);
+        for v in 0..1000 {
+            values.push(Decimal::from(v))
+        }
+        let v_des = bincode::serialize(&values).unwrap();
+        let p_des = bincode::serialize(&pack(&values)).unwrap();
+        assert!(v_des.len() > p_des.len() * 3);
     }
 }
