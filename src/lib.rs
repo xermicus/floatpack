@@ -1,7 +1,5 @@
-use std::str::FromStr;
-
 use bitpacking::{BitPacker, BitPacker8x};
-use rust_decimal::{Decimal, Error};
+use rust_decimal::Decimal;
 
 /// .0 = Compressed blocks
 /// .1 = Count of decimals
@@ -11,7 +9,6 @@ pub struct Packer {
     bitpacker: BitPacker8x,
     cache: Cache,
     packed: PackedDecimals,
-    trim: bool,
 }
 
 impl Default for Packer {
@@ -50,24 +47,7 @@ impl Packer {
             bitpacker: BitPacker8x::new(),
             cache: Cache::default(),
             packed: ([Vec::new(), Vec::new(), Vec::new(), Vec::new()], 0),
-            trim: true,
         }
-    }
-
-    pub fn with_trim(&mut self, trim: bool) -> &mut Self {
-        self.trim = trim;
-        self
-    }
-
-    pub fn load(&mut self, value: &str) -> Result<(), Error> {
-        let result;
-        if self.trim {
-            result = value.trim_matches('0');
-        } else {
-            result = value;
-        }
-        self.load_decimal(&Decimal::from_str(result)?);
-        Ok(())
     }
 
     pub fn load_decimal(&mut self, value: &Decimal) {
@@ -179,6 +159,14 @@ mod tests {
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
 
+    fn test_packing(values: &Vec<Decimal>) {
+        let unload = unpack(&pack(&values[..]));
+        assert_eq!(values.len(), unload.len());
+        for (a, b) in unload.iter().zip(values.iter()) {
+            assert_eq!(a, b)
+        }
+    }
+
     #[test]
     fn zipper() {
         for d in [
@@ -197,6 +185,20 @@ mod tests {
     }
 
     #[test]
+    fn some_values() {
+        test_packing(&vec![
+            dec!(0.866089137820393),
+            dec!(11.866089137820393),
+            dec!(-111.866089137820393),
+            dec!(0.0),
+            dec!(1.0),
+            dec!(-1.0),
+            Decimal::MAX,
+            Decimal::MIN,
+        ])
+    }
+
+    #[test]
     fn random_values() {
         let mut values = Vec::new();
         for _ in 0..257 {
@@ -207,10 +209,6 @@ mod tests {
             let d = Decimal::from_f64(v).unwrap();
             values.push(d);
         }
-        let unload = unpack(&pack(&values[..]));
-        assert_eq!(values.len(), unload.len());
-        for (a, b) in unload.iter().zip(values.iter()) {
-            assert_eq!(a, b)
-        }
+        test_packing(&values)
     }
 }
