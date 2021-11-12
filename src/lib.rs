@@ -10,6 +10,12 @@ pub struct Packer {
     trim: bool,
 }
 
+impl Default for Packer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 struct Cache {
     buffer: Option<[u32; 4]>,
     head: [u32; 4],
@@ -19,7 +25,7 @@ struct Cache {
 
 impl Default for Cache {
     fn default() -> Self {
-        Cache {
+        Self {
             buffer: None,
             head: [0; 4],
             compressed: [[0; BitPacker8x::BLOCK_LEN]; 4],
@@ -56,7 +62,8 @@ impl Packer {
         } else {
             result = value;
         }
-        Ok(self.load_decimal(Decimal::from_str(result)?))
+        self.load_decimal(Decimal::from_str(result)?);
+        Ok(())
     }
 
     pub fn load_decimal(&mut self, value: Decimal) {
@@ -168,7 +175,7 @@ mod tests {
 
     #[test]
     fn zipper() {
-        let tests = [
+        for d in [
             dec!(0.866089137820393),
             dec!(11.866089137820393),
             dec!(-111.866089137820393),
@@ -177,8 +184,7 @@ mod tests {
             dec!(-1.0),
             Decimal::MAX,
             Decimal::MIN,
-        ];
-        for d in tests {
+        ] {
             let z = zip_u8(d.serialize());
             assert_eq!(d, Decimal::deserialize(unzip_u8(z)));
         }
@@ -188,7 +194,7 @@ mod tests {
     fn random_values() {
         let mut packer = Packer::new();
         let mut values = Vec::new();
-        for i in 0..BitPacker8x::BLOCK_LEN + 1 {
+        for _ in 0..BitPacker8x::BLOCK_LEN + 1 {
             let v: f64 = rand::random();
             let d = Decimal::from_f64(v).unwrap();
             values.push(d);
