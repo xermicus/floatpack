@@ -1,11 +1,24 @@
 use bitpacking::{BitPacker, BitPacker8x};
 use rust_decimal::Decimal;
 
-/// .0 = Compressed blocks
-/// .1 = Count of decimals
+/// Represents `Decimals` in packed form.  (.0 = Compressed blocks, .1 = Count of decimals)
+///
+/// Usage example:
+/// ```
+/// use floatpack::{pack, unpack};
+/// use rust_decimal_macros::*;
+///
+/// let values = vec![dec!(1.0), dec!(2.0), dec!(3.0)];
+/// assert_eq!(values, unpack(&pack(&values[..])));
+/// ```
+///
+/// How it works:
+/// 1. The `Decimal` values are serialized in their components (4 x u32)
+/// 2. The 4 components are individually compressed by only storing their cumulative difference (XOR).
+/// 3. The 4 components are bit-packed
 pub type PackedDecimals = ([Vec<Block>; 4], usize);
 
-pub struct Packer {
+struct Packer {
     bitpacker: BitPacker8x,
     cache: Cache,
     packed: PackedDecimals,
@@ -42,7 +55,7 @@ pub struct Block {
 }
 
 impl Packer {
-    pub fn new() -> Packer {
+    fn new() -> Packer {
         Packer {
             bitpacker: BitPacker8x::new(),
             cache: Cache::default(),
@@ -50,7 +63,7 @@ impl Packer {
         }
     }
 
-    pub fn load_decimal(&mut self, value: &Decimal) {
+    fn load_decimal(&mut self, value: &Decimal) {
         let parsed = zip_u8(value.serialize());
         match self.cache.buffer {
             Some(last) => {
@@ -89,12 +102,9 @@ impl Packer {
         self.packed.1 += self.cache.idx + 1;
         self.cache = Cache::default();
     }
-
-    pub fn unload(&self) -> Vec<Decimal> {
-        unpack(&self.packed)
-    }
 }
 
+/// Pack and compress Decimals.
 pub fn pack(values: &[Decimal]) -> PackedDecimals {
     let mut p = Packer::new();
     for d in values {
@@ -104,6 +114,7 @@ pub fn pack(values: &[Decimal]) -> PackedDecimals {
     p.packed
 }
 
+/// Unpack and decompress Decimals.
 pub fn unpack(values: &PackedDecimals) -> Vec<Decimal> {
     let bitpacker = BitPacker8x::new();
     let buf = Vec::with_capacity(values.1);
@@ -160,11 +171,7 @@ mod tests {
     use rust_decimal_macros::*;
 
     fn test_packing(values: &Vec<Decimal>) {
-        let unload = unpack(&pack(&values[..]));
-        assert_eq!(values.len(), unload.len());
-        for (a, b) in unload.iter().zip(values.iter()) {
-            assert_eq!(a, b)
-        }
+        assert_eq!(values, &unpack(&pack(&values[..])));
     }
 
     #[test]
