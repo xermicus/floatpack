@@ -155,7 +155,7 @@ pub fn unpack(values: &PackedDecimals) -> Vec<Decimal> {
 
 fn zip_u8(values: [u8; 16]) -> [u32; 4] {
     [
-        u32::from_be_bytes([values[0], values[1], values[2], values[3]]),
+        u32::from_le_bytes([values[0], values[1], values[2], values[3]]),
         u32::from_le_bytes([values[4], values[5], values[6], values[7]]),
         u32::from_le_bytes([values[8], values[9], values[10], values[11]]),
         u32::from_le_bytes([values[12], values[13], values[14], values[15]]),
@@ -163,7 +163,7 @@ fn zip_u8(values: [u8; 16]) -> [u32; 4] {
 }
 
 fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
-    let v0 = values[0].to_be_bytes();
+    let v0 = values[0].to_le_bytes();
     let v1 = values[1].to_le_bytes();
     let v2 = values[2].to_le_bytes();
     let v3 = values[3].to_le_bytes();
@@ -175,7 +175,7 @@ fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
 
 #[cfg(test)]
 mod tests {
-    use crate::{pack, unpack, unzip_u8, zip_u8, Block, Packer};
+    use crate::{pack, unpack, unzip_u8, zip_u8};
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
 
@@ -212,76 +212,5 @@ mod tests {
         for (a, b) in unload.iter().zip(values.iter()) {
             assert_eq!(a, b)
         }
-    }
-
-    #[test]
-    fn pack_values() {
-        let mut packer = Packer::new();
-        packer.with_trim(true);
-        for _ in 0..65 {
-            packer.load("8874.85000000").unwrap();
-            packer.load("8875.14000000").unwrap();
-            packer.load("8874.99000000").unwrap();
-            packer.load("8874.98000000").unwrap();
-        }
-
-        let expected = [
-            [Block {
-                bits: 0,
-                head: 512,
-                vals: [].to_vec(),
-            }],
-            [Block {
-                bits: 7,
-                head: 887485,
-                vals: [
-                    231, 243, 249, 124, 145, 72, 36, 18, 129, 64, 32, 16, 247, 251, 253, 126, 231,
-                    243, 249, 124, 145, 72, 36, 18, 129, 64, 32, 16, 247, 251, 253, 126, 62, 159,
-                    207, 231, 137, 68, 34, 145, 8, 4, 2, 129, 191, 223, 239, 247, 62, 159, 207,
-                    231, 137, 68, 34, 145, 8, 4, 2, 129, 191, 223, 239, 247, 243, 249, 124, 62, 72,
-                    36, 18, 137, 64, 32, 16, 8, 251, 253, 126, 191, 243, 249, 124, 62, 72, 36, 18,
-                    137, 64, 32, 16, 8, 251, 253, 126, 191, 159, 207, 231, 243, 68, 34, 145, 72, 4,
-                    2, 129, 64, 223, 239, 247, 251, 159, 207, 231, 243, 68, 34, 145, 72, 4, 2, 129,
-                    64, 223, 239, 247, 251, 249, 124, 62, 159, 36, 18, 137, 68, 32, 16, 8, 4, 253,
-                    126, 191, 223, 249, 124, 62, 159, 36, 18, 137, 68, 32, 16, 8, 4, 253, 126, 191,
-                    223, 207, 231, 243, 249, 34, 145, 72, 36, 2, 129, 64, 32, 239, 247, 251, 253,
-                    207, 231, 243, 249, 34, 145, 72, 36, 2, 129, 64, 32, 239, 247, 251, 253, 124,
-                    62, 159, 207, 18, 137, 68, 34, 16, 8, 4, 2, 126, 191, 223, 239, 124, 62, 159,
-                    207, 18, 137, 68, 34, 16, 8, 4, 2, 126, 191, 223, 239,
-                ]
-                .to_vec(),
-            }],
-            [Block {
-                bits: 0,
-                head: 0,
-                vals: [].to_vec(),
-            }],
-            [Block {
-                bits: 0,
-                head: 0,
-                vals: [].to_vec(),
-            }],
-        ];
-        for i in 0..4 {
-            assert_eq!(packer.packed.0[i].len(), 1);
-            assert_eq!(
-                packer.packed.0[i].get(0).unwrap().bits,
-                expected[i].get(0).unwrap().bits
-            );
-            assert_eq!(
-                packer.packed.0[i].get(0).unwrap().head,
-                expected[i].get(0).unwrap().head
-            );
-            assert_eq!(
-                packer.packed.0[i].get(0).unwrap().vals,
-                expected[i].get(0).unwrap().vals
-            );
-        }
-        let unload = packer.unload();
-        assert_eq!(unload.len(), 257);
-        assert_eq!(unload[0], dec!(8874.85));
-        assert_eq!(unload[1], dec!(8875.14));
-        assert_eq!(unload[2], dec!(8874.99));
-        assert_eq!(unload[3], dec!(8874.98));
     }
 }
