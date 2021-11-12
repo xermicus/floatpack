@@ -176,7 +176,6 @@ fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
 #[cfg(test)]
 mod tests {
     use crate::{pack, unpack, unzip_u8, zip_u8, Block, Packer};
-    use bitpacking::{BitPacker, BitPacker8x};
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
 
@@ -201,7 +200,10 @@ mod tests {
     fn random_values() {
         let mut values = Vec::new();
         for _ in 0..257 {
-            let v: f64 = rand::random();
+            let mut v: f64 = rand::random();
+            if rand::random() {
+                v -= 1.;
+            }
             let d = Decimal::from_f64(v).unwrap();
             values.push(d);
         }
