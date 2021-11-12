@@ -1,4 +1,4 @@
-use std::{convert::TryInto, str::FromStr};
+use std::str::FromStr;
 
 use bitpacking::{BitPacker, BitPacker8x};
 use rust_decimal::{Decimal, Error};
@@ -126,7 +126,8 @@ pub fn pack(values: &[Decimal]) -> PackedDecimals {
 
 pub fn unpack(values: &PackedDecimals) -> Vec<Decimal> {
     let bitpacker = BitPacker8x::new();
-    let mut unpacked = [vec![], vec![], vec![], vec![]];
+    let buf = Vec::with_capacity(values.1);
+    let mut unpacked = [buf.clone(), buf.clone(), buf.clone(), buf];
     for (i, blocks) in values.0.iter().enumerate() {
         for block in blocks {
             let mut decompress = [0u32; BitPacker8x::BLOCK_LEN];
@@ -139,7 +140,7 @@ pub fn unpack(values: &PackedDecimals) -> Vec<Decimal> {
             }
         }
     }
-    let mut result = vec![];
+    let mut result = Vec::with_capacity(values.1);
     for i in 0..values.1 {
         let v = Decimal::deserialize(unzip_u8([
             unpacked[0][i],
@@ -162,15 +163,14 @@ fn zip_u8(values: [u8; 16]) -> [u32; 4] {
 }
 
 fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
+    let v0 = values[0].to_be_bytes();
+    let v1 = values[1].to_le_bytes();
+    let v2 = values[2].to_le_bytes();
+    let v3 = values[3].to_le_bytes();
     [
-        values[0].to_be_bytes(),
-        values[1].to_le_bytes(),
-        values[2].to_le_bytes(),
-        values[3].to_le_bytes(),
+        v0[0], v0[1], v0[2], v0[3], v1[0], v1[1], v1[2], v1[3], v2[0], v2[1], v2[2], v2[3], v3[0],
+        v3[1], v3[2], v3[3],
     ]
-    .concat()
-    .try_into()
-    .unwrap()
 }
 
 #[cfg(test)]
