@@ -78,7 +78,7 @@ impl Packer {
         }
         self.cache.buffer = Some(parsed);
 
-        if self.cache.idx == BitPacker8x::BLOCK_LEN - 20 {
+        if self.cache.idx == BitPacker8x::BLOCK_LEN {
             self.pack()
         }
     }
@@ -149,10 +149,10 @@ fn zip_u8(values: [u8; 16]) -> [u32; 4] {
 
 fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
     [
-        u32::to_be_bytes(values[0]),
-        u32::to_le_bytes(values[1]),
-        u32::to_le_bytes(values[2]),
-        u32::to_le_bytes(values[2]),
+        values[0].to_be_bytes(),
+        values[1].to_le_bytes(),
+        values[2].to_le_bytes(),
+        values[3].to_le_bytes(),
     ]
     .concat()
     .try_into()
@@ -161,16 +161,34 @@ fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Block, Packer};
+    use crate::{unzip_u8, zip_u8, Block, Packer};
     use bitpacking::{BitPacker, BitPacker8x};
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
 
     #[test]
+    fn zipper() {
+        let tests = [
+            dec!(0.866089137820393),
+            dec!(11.866089137820393),
+            dec!(-111.866089137820393),
+            dec!(0.0),
+            dec!(1.0),
+            dec!(-1.0),
+            Decimal::MAX,
+            Decimal::MIN,
+        ];
+        for d in tests {
+            let z = zip_u8(d.serialize());
+            assert_eq!(d, Decimal::deserialize(unzip_u8(z)));
+        }
+    }
+
+    #[test]
     fn random_values() {
         let mut packer = Packer::new();
         let mut values = Vec::new();
-        for _ in 0..BitPacker8x::BLOCK_LEN + 1 {
+        for i in 0..BitPacker8x::BLOCK_LEN + 1 {
             let v: f64 = rand::random();
             let d = Decimal::from_f64(v).unwrap();
             values.push(d);
