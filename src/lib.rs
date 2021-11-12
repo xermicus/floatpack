@@ -10,12 +10,6 @@ pub struct Packer {
     trim: bool,
 }
 
-impl Default for Packer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 struct Cache {
     buffer: Option<[u32; 4]>,
     head: [u32; 4],
@@ -25,7 +19,7 @@ struct Cache {
 
 impl Default for Cache {
     fn default() -> Self {
-        Self {
+        Cache {
             buffer: None,
             head: [0; 4],
             compressed: [[0; BitPacker8x::BLOCK_LEN]; 4],
@@ -70,18 +64,12 @@ impl Packer {
         let parsed = zip_u8(value.serialize());
         match self.cache.buffer {
             Some(last) => {
-                self.cache.compressed[0][self.cache.idx] = parsed[0] ^ last[0];
-                self.cache.compressed[1][self.cache.idx] = parsed[1] ^ last[1];
-                self.cache.compressed[2][self.cache.idx] = parsed[2] ^ last[2];
-                self.cache.compressed[3][self.cache.idx] = parsed[3] ^ last[3];
+                for i in 0..4 {
+                    self.cache.compressed[i][self.cache.idx] = parsed[i] ^ last[i];
+                }
                 self.cache.idx += 1;
             }
-            None => {
-                self.cache.head[0] = parsed[0];
-                self.cache.head[1] = parsed[1];
-                self.cache.head[2] = parsed[2];
-                self.cache.head[3] = parsed[3];
-            }
+            None => self.cache.head = parsed,
         }
         self.cache.buffer = Some(parsed);
 
