@@ -3,11 +3,21 @@ use std::{convert::TryInto, str::FromStr};
 use bitpacking::{BitPacker, BitPacker8x};
 use rust_decimal::{Decimal, Error};
 
+/// .0 = Compressed blocks
+/// .1 = Count of decimals
+pub type PackedDecimals = ([Vec<Block>; 4], usize);
+
 pub struct Packer {
     bitpacker: BitPacker8x,
     cache: Cache,
-    packed: [Vec<Block>; 4],
+    packed: PackedDecimals,
     trim: bool,
+}
+
+impl Default for Packer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 struct Cache {
@@ -28,7 +38,7 @@ impl Default for Cache {
     }
 }
 
-struct Block {
+pub struct Block {
     bits: u8,
     head: u32,
     vals: Vec<u8>,
@@ -39,7 +49,7 @@ impl Packer {
         Packer {
             bitpacker: BitPacker8x::new(),
             cache: Cache::default(),
-            packed: [Vec::new(), Vec::new(), Vec::new(), Vec::new()],
+            packed: ([Vec::new(), Vec::new(), Vec::new(), Vec::new()], 0),
             trim: true,
         }
     }
@@ -56,11 +66,11 @@ impl Packer {
         } else {
             result = value;
         }
-        self.load_decimal(Decimal::from_str(result)?);
+        self.load_decimal(&Decimal::from_str(result)?);
         Ok(())
     }
 
-    pub fn load_decimal(&mut self, value: Decimal) {
+    pub fn load_decimal(&mut self, value: &Decimal) {
         let parsed = zip_u8(value.serialize());
         match self.cache.buffer {
             Some(last) => {
@@ -79,6 +89,9 @@ impl Packer {
     }
 
     fn pack(&mut self) {
+        if self.cache.buffer.is_none() {
+            return;
+        }
         for i in 0..4 {
             let bits = self.bitpacker.num_bits(&self.cache.compressed[i]);
             let mut compressed = vec![0u8; (bits as usize) * BitPacker8x::BLOCK_LEN / 8];
@@ -87,50 +100,56 @@ impl Packer {
                 .bitpacker
                 .compress(&self.cache.compressed[i], &mut compressed[..], bits);
 
-            self.packed[i].push(Block {
+            self.packed.0[i].push(Block {
                 bits,
                 head: self.cache.head[i],
                 vals: compressed,
             });
         }
-        self.flush_cache()
+        self.packed.1 += self.cache.idx + 1;
+        self.cache = Cache::default();
     }
 
     pub fn unload(&self) -> Vec<Decimal> {
-        let mut unpacked = [vec![], vec![], vec![], vec![]];
-        for (i, blocks) in self.packed.iter().enumerate() {
-            for block in blocks {
-                let mut decompress = [0u32; BitPacker8x::BLOCK_LEN];
-                self.bitpacker
-                    .decompress(&block.vals, &mut decompress, block.bits);
-                let mut last = block.head;
-                unpacked[i].push(last);
-                for v in decompress {
-                    last ^= v;
-                    unpacked[i].push(last)
-                }
+        unpack(&self.packed)
+    }
+}
+
+pub fn pack(values: &[Decimal]) -> PackedDecimals {
+    let mut p = Packer::new();
+    for d in values {
+        p.load_decimal(d);
+    }
+    p.pack();
+    p.packed
+}
+
+pub fn unpack(values: &PackedDecimals) -> Vec<Decimal> {
+    let bitpacker = BitPacker8x::new();
+    let mut unpacked = [vec![], vec![], vec![], vec![]];
+    for (i, blocks) in values.0.iter().enumerate() {
+        for block in blocks {
+            let mut decompress = [0u32; BitPacker8x::BLOCK_LEN];
+            bitpacker.decompress(&block.vals, &mut decompress, block.bits);
+            let mut last = block.head;
+            unpacked[i].push(last);
+            for v in decompress {
+                last ^= v;
+                unpacked[i].push(last)
             }
         }
-        let mut result = vec![];
-        for i in 0..unpacked[0].len() {
-            let v = Decimal::deserialize(unzip_u8([
-                unpacked[0][i],
-                unpacked[1][i],
-                unpacked[2][i],
-                unpacked[3][i],
-            ]));
-            result.push(v);
-        }
-        result
     }
-
-    fn flush_cache(&mut self) {
-        self.cache = Cache::default()
+    let mut result = vec![];
+    for i in 0..values.1 {
+        let v = Decimal::deserialize(unzip_u8([
+            unpacked[0][i],
+            unpacked[1][i],
+            unpacked[2][i],
+            unpacked[3][i],
+        ]));
+        result.push(v);
     }
-
-    pub fn serialize(&self) {
-        unimplemented!()
-    }
+    result
 }
 
 fn zip_u8(values: [u8; 16]) -> [u32; 4] {
@@ -156,7 +175,7 @@ fn unzip_u8(values: [u32; 4]) -> [u8; 16] {
 
 #[cfg(test)]
 mod tests {
-    use crate::{unzip_u8, zip_u8, Block, Packer};
+    use crate::{pack, unpack, unzip_u8, zip_u8, Block, Packer};
     use bitpacking::{BitPacker, BitPacker8x};
     use rust_decimal::prelude::*;
     use rust_decimal_macros::*;
@@ -180,15 +199,13 @@ mod tests {
 
     #[test]
     fn random_values() {
-        let mut packer = Packer::new();
         let mut values = Vec::new();
-        for _ in 0..BitPacker8x::BLOCK_LEN + 1 {
+        for _ in 0..257 {
             let v: f64 = rand::random();
             let d = Decimal::from_f64(v).unwrap();
             values.push(d);
-            packer.load_decimal(d);
         }
-        let unload = packer.unload();
+        let unload = unpack(&pack(&values[..]));
         assert_eq!(values.len(), unload.len());
         for (a, b) in unload.iter().zip(values.iter()) {
             assert_eq!(a, b)
@@ -244,17 +261,17 @@ mod tests {
             }],
         ];
         for i in 0..4 {
-            assert_eq!(packer.packed[i].len(), 1);
+            assert_eq!(packer.packed.0[i].len(), 1);
             assert_eq!(
-                packer.packed[i].get(0).unwrap().bits,
+                packer.packed.0[i].get(0).unwrap().bits,
                 expected[i].get(0).unwrap().bits
             );
             assert_eq!(
-                packer.packed[i].get(0).unwrap().head,
+                packer.packed.0[i].get(0).unwrap().head,
                 expected[i].get(0).unwrap().head
             );
             assert_eq!(
-                packer.packed[i].get(0).unwrap().vals,
+                packer.packed.0[i].get(0).unwrap().vals,
                 expected[i].get(0).unwrap().vals
             );
         }
